@@ -1,62 +1,44 @@
 pub mod tls;
 pub mod stream;
 
-use std::path::PathBuf;
-use futures::{StreamExt, SinkExt};
-use tokio::{spawn, net::{TcpStream, TcpListener}};
-use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::{Role, Message}};
+use std::io;
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio_rustls::{TlsConnector, TlsAcceptor};
+use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::{Role, WebSocketConfig}};
 use crate::stream::MaybeTlsStream;
 
-pub struct Connection {
-    pub role: Role,
-    pub tls: bool,
-    pub domain: String,
-    pub port: u16,
-    pub tls_server_config: Option<TlsServerConfig>,
-}
-
-pub struct TlsServerConfig {
-    pub key_path: PathBuf,
-    pub certs_path: PathBuf,
-}
-
-pub async fn ws_or_wss_client_example(Connection { role, tls, domain, port, .. }: Connection) {
-    assert_eq!(role, Role::Client);
-
-    let connector = tls.then(|| tls::build_connector());
-    let stream = TcpStream::connect((domain.as_str(), port)).await.unwrap();
-    let stream = if tls {
-        MaybeTlsStream::ClientTls(tls::connect(connector.as_ref().unwrap(), &domain, stream).await.unwrap())
+pub async fn connect<S>(
+    stream: S,
+    tls_connector: Option<&TlsConnector>,
+    tls_domain: Option<&str>,
+    config: Option<WebSocketConfig>
+) -> io::Result<WebSocketStream<MaybeTlsStream<S>>>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    let stream = if let Some(connector) = tls_connector {
+        let domain = tokio_rustls::rustls::ServerName::try_from(tls_domain.unwrap())
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "invalid dns name"))?;
+        MaybeTlsStream::ClientTls(connector.connect(domain, stream).await?)
     } else {
         MaybeTlsStream::Plain(stream)
     };
-    let websocket = WebSocketStream::from_raw_socket(stream, role, None).await;
-
-    // start example
-    let (mut tx, mut rx) = websocket.split();
-    tx.send(Message::Text("hi".to_owned())).await.unwrap();
-    println!("{:?}", rx.next().await.unwrap());
+    Ok(WebSocketStream::from_raw_socket(stream, Role::Client, config).await)
 }
 
-pub async fn ws_or_wss_server_example(Connection { role, tls, domain, port, tls_server_config }: Connection) {
-    assert_eq!(role, Role::Server);
-
-    let acceptor = tls.then(|| tls::build_acceptor(tls_server_config.unwrap()).unwrap());
-    let server = TcpListener::bind((domain, port)).await.unwrap();
-
-    while let Ok((stream, _)) = server.accept().await {
-        let stream = if tls {
-            MaybeTlsStream::ServerTls(tls::accept(acceptor.as_ref().unwrap(), stream).await.unwrap())
-        } else {
-            MaybeTlsStream::Plain(stream)
-        };
-        let websocket = WebSocketStream::from_raw_socket(stream, role, None).await;
-
-        spawn(async move {
-            // start example
-            let (mut tx, mut rx) = websocket.split();
-            println!("{:?}", rx.next().await.unwrap());
-            tx.send(Message::Text("hello".to_owned())).await.unwrap();
-        });
-    }
+pub async fn accept<S>(
+    stream: S,
+    tls_acceptor: Option<&TlsAcceptor>,
+    config: Option<WebSocketConfig>
+) -> io::Result<WebSocketStream<MaybeTlsStream<S>>>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    let stream = if let Some(acceptor) = tls_acceptor {
+        let sess_acceptor = acceptor.clone();
+        MaybeTlsStream::ServerTls(sess_acceptor.accept(stream).await?)
+    } else {
+        MaybeTlsStream::Plain(stream)
+    };
+    Ok(WebSocketStream::from_raw_socket(stream, Role::Server, config).await)
 }

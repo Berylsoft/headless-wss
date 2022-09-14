@@ -1,10 +1,21 @@
-use std::{sync::Arc, io::{self, BufReader}, fs::File};
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_rustls::{TlsConnector, TlsAcceptor, rustls::{self, OwnedTrustAnchor, Certificate, PrivateKey}, client, server};
-use rustls_pemfile::{certs, rsa_private_keys};
-use crate::TlsServerConfig;
+use std::{sync::Arc, path::Path, io::{self, BufReader}, fs::File};
+use tokio_rustls::{TlsConnector, TlsAcceptor, rustls::{self, OwnedTrustAnchor, Certificate, PrivateKey}};
 
-pub use rustls::ServerName;
+pub fn load_certs<P: AsRef<Path>>(path: P) -> io::Result<Vec<Certificate>> {
+    let mut certs = rustls_pemfile::certs(&mut BufReader::new(File::open(path)?))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid certs"))?;
+    Ok(certs.drain(..).map(Certificate).collect())
+}
+
+pub fn load_rsa_key<P: AsRef<Path>>(path: P) -> io::Result<PrivateKey> {
+    let mut keys = rustls_pemfile::rsa_private_keys(&mut BufReader::new(File::open(path)?))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))?;
+
+    let key = keys.drain(..).map(PrivateKey).next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))?;
+
+    Ok(key)
+}
 
 pub fn build_connector() -> TlsConnector {
     let mut root_cert_store = rustls::RootCertStore::empty();
@@ -27,25 +38,7 @@ pub fn build_connector() -> TlsConnector {
     TlsConnector::from(Arc::new(config))
 }
 
-#[inline]
-pub async fn connect<S: AsyncRead + AsyncWrite + Unpin>(connector: &TlsConnector, domain: &str, stream: S) -> io::Result<client::TlsStream<S>> {
-    let domain = rustls::ServerName::try_from(domain)
-        .map_err(|_| io::Error::new(io::ErrorKind::Other, "invalid dns name"))?;
-    connector.connect(domain, stream).await
-}
-
-pub fn build_acceptor(TlsServerConfig { key_path, certs_path }: TlsServerConfig) -> io::Result<TlsAcceptor> {
-    let mut certs = certs(&mut BufReader::new(File::open(certs_path)?))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid certs"))?;
-
-    let certs: Vec<_> = certs.drain(..).map(Certificate).collect();
-
-    let mut keys = rsa_private_keys(&mut BufReader::new(File::open(key_path)?))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))?;
-
-    let key = keys.drain(..).map(PrivateKey).next()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))?;
-
+pub fn build_acceptor(key: PrivateKey, certs: Vec<Certificate>) -> io::Result<TlsAcceptor> {
     let config = rustls::ServerConfig::builder()
         .with_safe_defaults()
         .with_no_client_auth()
@@ -53,10 +46,4 @@ pub fn build_acceptor(TlsServerConfig { key_path, certs_path }: TlsServerConfig)
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
     Ok(TlsAcceptor::from(Arc::new(config)))
-}
-
-#[inline]
-pub async fn accept<S: AsyncRead + AsyncWrite + Unpin>(accpetor: &TlsAcceptor, stream: S) -> io::Result<server::TlsStream<S>> {
-    let sess_acceptor = accpetor.clone();
-    sess_acceptor.accept(stream).await
 }
