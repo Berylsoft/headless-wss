@@ -1,3 +1,5 @@
+pub use tokio_rustls;
+
 #[cfg(feature = "client-tls-helper")]
 use std::sync::Arc;
 #[cfg(feature = "client-tls-helper")]
