@@ -1,4 +1,4 @@
-#[cfg(all(feature = "client-tls-helper", feature = "server-tls-helper"))]
+#[cfg(any(feature = "client-tls-helper", feature = "server-tls-helper"))]
 pub mod tls;
 mod stream;
 

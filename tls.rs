@@ -1,23 +1,7 @@
-use std::{sync::Arc, path::Path, io::{self, BufReader}, fs::File};
-use tokio_rustls::{TlsConnector, TlsAcceptor, rustls::{self, OwnedTrustAnchor, Certificate, PrivateKey}};
-
-#[cfg(feature = "server-tls-helper")]
-pub fn load_certs<P: AsRef<Path>>(path: P) -> io::Result<Vec<Certificate>> {
-    let mut certs = rustls_pemfile::certs(&mut BufReader::new(File::open(path)?))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid certs"))?;
-    Ok(certs.drain(..).map(Certificate).collect())
-}
-
-#[cfg(feature = "server-tls-helper")]
-pub fn load_rsa_key<P: AsRef<Path>>(path: P) -> io::Result<PrivateKey> {
-    let mut keys = rustls_pemfile::rsa_private_keys(&mut BufReader::new(File::open(path)?))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))?;
-
-    let key = keys.drain(..).map(PrivateKey).next()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))?;
-
-    Ok(key)
-}
+#[cfg(feature = "client-tls-helper")]
+use std::sync::Arc;
+#[cfg(feature = "client-tls-helper")]
+use tokio_rustls::{TlsConnector, rustls::{self, OwnedTrustAnchor}};
 
 #[cfg(feature = "client-tls-helper")]
 pub fn build_connector() -> TlsConnector {
@@ -39,6 +23,29 @@ pub fn build_connector() -> TlsConnector {
         .with_no_client_auth();
 
     TlsConnector::from(Arc::new(config))
+}
+
+#[cfg(feature = "server-tls-helper")]
+use std::{sync::Arc, path::Path, io::{self, BufReader}, fs::File};
+#[cfg(feature = "server-tls-helper")]
+use tokio_rustls::{TlsAcceptor, rustls::{self, Certificate, PrivateKey}};
+
+#[cfg(feature = "server-tls-helper")]
+pub fn load_certs<P: AsRef<Path>>(path: P) -> io::Result<Vec<Certificate>> {
+    let mut certs = rustls_pemfile::certs(&mut BufReader::new(File::open(path)?))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid certs"))?;
+    Ok(certs.drain(..).map(Certificate).collect())
+}
+
+#[cfg(feature = "server-tls-helper")]
+pub fn load_rsa_key<P: AsRef<Path>>(path: P) -> io::Result<PrivateKey> {
+    let mut keys = rustls_pemfile::rsa_private_keys(&mut BufReader::new(File::open(path)?))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))?;
+
+    let key = keys.drain(..).map(PrivateKey).next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))?;
+
+    Ok(key)
 }
 
 #[cfg(feature = "server-tls-helper")]
