@@ -11,7 +11,7 @@ path = "lib.rs"
 
 [dependencies]
 futures = "0.3"
-tokio = { version = "1", features = ["rt", "net"] }
+tokio = "1"
 tokio-rustls = "0.23"
 tokio-tungstenite = { version = "0.17", default-features = false }
 webpki-roots = { version = "0.22", optional = true }
