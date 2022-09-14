@@ -1,11 +1,14 @@
+#[cfg(all(feature = "client-tls-helper", feature = "server-tls-helper"))]
 pub mod tls;
-pub mod stream;
+mod stream;
+
+pub use tokio_tungstenite::{WebSocketStream, tungstenite};
+pub use crate::stream::MaybeTlsStream;
 
 use std::io;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::{TlsConnector, TlsAcceptor};
-use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::{Role, WebSocketConfig}};
-use crate::stream::MaybeTlsStream;
+use tungstenite::protocol::{Role, WebSocketConfig};
 
 pub async fn connect<S>(
     stream: S,

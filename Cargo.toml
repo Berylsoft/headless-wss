@@ -13,15 +13,21 @@ path = "lib.rs"
 futures = "0.3"
 tokio = { version = "1", features = ["rt", "net"] }
 tokio-rustls = "0.23"
-tokio-tungstenite = "0.17"
-webpki-roots = "0.22"
-rustls-pemfile = "0.2"
+tokio-tungstenite = { version = "0.17", default-features = false }
+webpki-roots = { version = "0.22", optional = true }
+rustls-pemfile = { version = "0.2", optional = true }
+
+[features]
+client-tls-helper = ["webpki-roots"]
+server-tls-helper = ["rustls-pemfile"]
 
 [[example]]
 name = "client"
+required-features = ["client-tls-helper"]
 
 [[example]]
 name = "server"
+required-features = ["server-tls-helper"]
 
 [dev-dependencies]
 argh = "0.1"
